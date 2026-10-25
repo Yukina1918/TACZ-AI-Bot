@@ -1,0 +1,36 @@
+modLoader = "javafml"
+loaderVersion = "[47,)"
+license = "All Rights Reserved"
+issueTrackerURL = ""
+
+[[mods]]
+modId = "taczbotai"
+version = "${file.jarVersion}"
+displayName = "TACZ Bot AI"
+authors = "taczbotai"
+description = '''
+Timeless & Classics Zero 枪械 AI 生物。
+类人史蒂夫骨架 / 随机内置皮肤 / TACZ 原生持枪与射击动画 / 原版队伍敌友判定 /
+5 档攻击精度（档位 5 含 10% 锁头秒杀）/ 玩家录制路径巡逻 / 游戏内 GUI 配置。
+'''
+
+[[dependencies.taczbotai]]
+modId = "forge"
+mandatory = true
+versionRange = "[47,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.taczbotai]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.20.1,1.21)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.taczbotai]]
+modId = "tacz"
+mandatory = true
+versionRange = "[1.1.8,)"
+ordering = "AFTER"
+side = "BOTH"
