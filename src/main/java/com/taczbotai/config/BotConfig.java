@@ -95,6 +95,8 @@ public final class BotConfig {
     public static final ForgeConfigSpec.ConfigValue<String> DUMMY_NAME;
     public static final ForgeConfigSpec.DoubleValue DUMMY_HEALTH;
     public static final ForgeConfigSpec.BooleanValue DUMMY_INVULNERABLE;
+    public static final ForgeConfigSpec.BooleanValue DUMMY_AI_ENABLED;
+    public static final ForgeConfigSpec.DoubleValue DUMMY_AI_SPEED;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -266,6 +268,11 @@ public final class BotConfig {
                 .defineInRange("health", 20.0D, 1.0D, 10240.0D);
         DUMMY_INVULNERABLE = b.comment("Make the test subject invulnerable.")
                 .define("invulnerable", false);
+        DUMMY_AI_ENABLED = b.comment("Give the test subject basic AI: gravity + slow wandering like a walking player.",
+                        "Disabled by default, which keeps it completely still.")
+                .define("aiEnabled", false);
+        DUMMY_AI_SPEED = b.comment("Movement speed when AI is enabled (0.1 is about a walking player).")
+                .defineInRange("aiSpeed", 0.1D, 0.0D, 1.0D);
         b.pop();
 
         SPEC = b.build();

@@ -11,36 +11,37 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.util.Mth;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
 
 /**
  * 游戏内配置界面（模组列表 → 配置）。
  *
- * 采用分页布局，避免字段太多时控件互相重叠：
- *  - 战斗：档位 / 友伤 / 锁头 / 击杀播报 / 是否打敌对生物
- *  - 数值：三档交战距离 + 七类换弹时间
- *  - 其它：枪械与配件、队伍、路径模式与分配、快捷操作
+ * 布局：左侧分类列表（宽 25%，上下选择），右侧对应内容（宽 75%），
+ * 内容超出高度时可用滚轮滚动，底部固定「保存并关闭」。
+ *
+ * 分类：战斗 / 数值 / 装备 / 队伍 / 路径 / 结算 / 测试人员 / 操作
  */
 public class BotConfigScreen extends Screen {
-    private enum Page {
-        COMBAT, VALUES, MISC, MATCH
+    private enum Section {
+        COMBAT, VALUES, EQUIP, TEAM, PATH, MATCH, DUMMY, ACTIONS
     }
 
     private static final int LABEL_COLOR = 0xA0A0A0;
     private static final int VALUE_COLOR = 0xFFFFFF;
+    private static final int CATEGORY_ACTIVE = 0xFFD37F;
+    private static final double LEFT_RATIO = 2.5D / 10.0D;
 
     private final Screen parent;
 
-    private Page page = Page.COMBAT;
+    private Section section = Section.COMBAT;
     private boolean loaded;
-    /** 滚轮偏移（像素），内容超出可视区域时生效。 */
+    /** 右侧内容的滚轮偏移。 */
     private int scroll;
+    /** 当前分类内容最低点，用于计算最大滚动量。 */
+    private int contentBottom = 200;
 
     // 战斗
     private int tier;
@@ -61,15 +62,17 @@ public class BotConfigScreen extends Screen {
     private double reloadHeavy;
     private double reloadOther;
 
-    // 其它
+    // 装备 / 队伍 / 路径
     private String gunId;
     private String attachments;
+    private String gunNbt = "";
+    private String names = "";
+    private String nameMode = "team";
     private String teamName;
     private String pathName = "";
     private String pathMode = "loop";
-    private String gunNbt = "";
-    private String nameMode = "team";
-    private String names = "";
+
+    // 结算
     private boolean matchTeleport;
     private boolean matchLeaveTeam;
     private boolean matchClearInv;
@@ -77,7 +80,14 @@ public class BotConfigScreen extends Screen {
     private double endY;
     private double endZ;
 
-    // 当前页控件（切页/保存前回读）
+    // 测试人员
+    private String dummyName = "测试人员";
+    private double dummyHealth = 20.0D;
+    private boolean dummyInvulnerable;
+    private boolean dummyAi;
+    private double dummySpeed = 0.1D;
+
+    // 控件引用（切分类 / 保存前回读）
     private EditBox rangeCloseBox;
     private EditBox rangeMidBox;
     private EditBox rangeFarBox;
@@ -90,13 +100,16 @@ public class BotConfigScreen extends Screen {
     private EditBox reloadOtherBox;
     private EditBox gunIdBox;
     private EditBox attachmentsBox;
-    private EditBox teamBox;
-    private EditBox pathBox;
     private EditBox gunNbtBox;
     private EditBox namesBox;
+    private EditBox teamBox;
+    private EditBox pathBox;
     private EditBox endXBox;
     private EditBox endYBox;
     private EditBox endZBox;
+    private EditBox dummyNameBox;
+    private EditBox dummyHealthBox;
+    private EditBox dummySpeedBox;
 
     public BotConfigScreen(Screen parent) {
         super(Component.translatable("taczbotai.gui.title"));
@@ -104,8 +117,24 @@ public class BotConfigScreen extends Screen {
     }
 
     // ------------------------------------------------------------------
-    // 生命周期
+    // 布局
     // ------------------------------------------------------------------
+
+    private int leftX() {
+        return 16;
+    }
+
+    private int leftWidth() {
+        return Math.max(88, (int) Math.round((this.width - 32) * LEFT_RATIO));
+    }
+
+    private int rightX() {
+        return this.leftX() + this.leftWidth() + 12;
+    }
+
+    private int rightWidth() {
+        return this.width - this.rightX() - 16;
+    }
 
     @Override
     protected void init() {
@@ -125,30 +154,110 @@ public class BotConfigScreen extends Screen {
         this.reloadOtherBox = null;
         this.gunIdBox = null;
         this.attachmentsBox = null;
-        this.teamBox = null;
-        this.pathBox = null;
         this.gunNbtBox = null;
         this.namesBox = null;
+        this.teamBox = null;
+        this.pathBox = null;
         this.endXBox = null;
         this.endYBox = null;
         this.endZBox = null;
+        this.dummyNameBox = null;
+        this.dummyHealthBox = null;
+        this.dummySpeedBox = null;
 
-        switch (this.page) {
-            case COMBAT -> this.buildCombatPage();
-            case VALUES -> this.buildValuesPage();
-            case MISC -> this.buildMiscPage();
-            case MATCH -> this.buildMatchPage();
+        switch (this.section) {
+            case COMBAT -> this.buildCombat();
+            case VALUES -> this.buildValues();
+            case EQUIP -> this.buildEquip();
+            case TEAM -> this.buildTeam();
+            case PATH -> this.buildPath();
+            case MATCH -> this.buildMatch();
+            case DUMMY -> this.buildDummy();
+            case ACTIONS -> this.buildActions();
         }
+
         this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.apply"), b -> {
             this.capture();
             this.applyConfig();
             if (this.minecraft != null) {
                 this.minecraft.setScreen(this.parent);
             }
-        }).bounds(this.width / 2 - 100, this.height - 28, 200, 20).build());
-        // 页签最后添加：渲染顺序靠后，内容滚到顶部时会被它遮住
-        this.buildTabs();
+        }).bounds(this.width / 2 - 100, this.height - 26, 200, 18).build());
+
+        this.buildCategories();
     }
+
+    /** 左侧分类按钮（最后添加，渲染在最上层）。 */
+    private void buildCategories() {
+        int x = this.leftX();
+        int w = this.leftWidth();
+        int y = 32;
+        for (Section target : Section.values()) {
+            boolean active = target == this.section;
+            Button button = Button.builder(categoryLabel(target, active), b -> this.switchSection(target))
+                    .bounds(x, y, w, 18).build();
+            this.addRenderableWidget(button);
+            y += 21;
+        }
+    }
+
+    private Component categoryLabel(Section target, boolean active) {
+        String text = Component.translatable(categoryKey(target)).getString();
+        return Component.literal(active ? "» " + text : text)
+                .withStyle(active ? net.minecraft.ChatFormatting.GOLD : net.minecraft.ChatFormatting.GRAY);
+    }
+
+    private static String categoryKey(Section target) {
+        return switch (target) {
+            case COMBAT -> "taczbotai.gui.page.combat";
+            case VALUES -> "taczbotai.gui.page.values";
+            case EQUIP -> "taczbotai.gui.page.equip";
+            case TEAM -> "taczbotai.gui.page.team";
+            case PATH -> "taczbotai.gui.page.path";
+            case MATCH -> "taczbotai.gui.page.match";
+            case DUMMY -> "taczbotai.gui.page.dummy";
+            case ACTIONS -> "taczbotai.gui.page.actions";
+        };
+    }
+
+    private void switchSection(Section target) {
+        if (target == this.section) {
+            return;
+        }
+        this.capture();
+        this.section = target;
+        this.scroll = 0;
+        this.clearWidgets();
+        this.init();
+    }
+
+    // ------------------------------------------------------------------
+    // 滚动
+    // ------------------------------------------------------------------
+
+    private int maxScroll() {
+        return Math.max(0, this.contentBottom - (this.height - 40));
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        int max = this.maxScroll();
+        if (max <= 0 || mouseX < this.rightX()) {
+            return super.mouseScrolled(mouseX, mouseY, delta);
+        }
+        int before = this.scroll;
+        this.scroll = Mth.clamp(this.scroll - (int) Math.round(delta * 24.0D), 0, max);
+        if (this.scroll != before) {
+            this.capture();
+            this.clearWidgets();
+            this.init();
+        }
+        return true;
+    }
+
+    // ------------------------------------------------------------------
+    // 读取 / 回写
+    // ------------------------------------------------------------------
 
     private void loadFromConfig() {
         this.tier = BotConfig.guiValue(BotConfig.ATTACK_TIER);
@@ -179,75 +288,13 @@ public class BotConfigScreen extends Screen {
         this.endX = BotConfig.guiValue(BotConfig.MATCH_END_X);
         this.endY = BotConfig.guiValue(BotConfig.MATCH_END_Y);
         this.endZ = BotConfig.guiValue(BotConfig.MATCH_END_Z);
+        this.dummyName = BotConfig.guiValue(BotConfig.DUMMY_NAME);
+        this.dummyHealth = BotConfig.guiValue(BotConfig.DUMMY_HEALTH);
+        this.dummyInvulnerable = BotConfig.guiValue(BotConfig.DUMMY_INVULNERABLE);
+        this.dummyAi = BotConfig.guiValue(BotConfig.DUMMY_AI_ENABLED);
+        this.dummySpeed = BotConfig.guiValue(BotConfig.DUMMY_AI_SPEED);
     }
 
-    private void buildTabs() {
-        int tabWidth = 92;
-        int x = this.width / 2 - (tabWidth * 3 + 8) / 2;
-        this.addRenderableWidget(Button.builder(tabLabel(Page.COMBAT), b -> this.switchPage(Page.COMBAT))
-                .bounds(x, 20, tabWidth, 18).build());
-        this.addRenderableWidget(Button.builder(tabLabel(Page.VALUES), b -> this.switchPage(Page.VALUES))
-                .bounds(x + tabWidth + 4, 20, tabWidth, 18).build());
-        this.addRenderableWidget(Button.builder(tabLabel(Page.MISC), b -> this.switchPage(Page.MISC))
-                .bounds(x + (tabWidth + 4) * 2, 20, tabWidth, 18).build());
-        this.addRenderableWidget(Button.builder(tabLabel(Page.MATCH), b -> this.switchPage(Page.MATCH))
-                .bounds(x + (tabWidth + 4) * 3, 20, tabWidth, 18).build());
-    }
-
-    private Component tabLabel(Page target) {
-        String key = switch (target) {
-            case COMBAT -> "taczbotai.gui.page.combat";
-            case VALUES -> "taczbotai.gui.page.values";
-            case MISC -> "taczbotai.gui.page.misc";
-            case MATCH -> "taczbotai.gui.page.match";
-        };
-        String text = Component.translatable(key).getString();
-        return Component.literal(this.page == target ? "» " + text + " «" : text);
-    }
-
-    private void switchPage(Page target) {
-        this.capture();
-        this.page = target;
-        this.scroll = 0;
-        this.clearWidgets();
-        this.init();
-    }
-
-    // ------------------------------------------------------------------
-    // 滚轮滚动
-    // ------------------------------------------------------------------
-
-    /** 当前页内容最低点（含留白）。 */
-    private int contentBottom() {
-        return switch (this.page) {
-            case COMBAT -> 176;
-            case VALUES -> 212;
-            case MISC -> 276;
-            case MATCH -> 230;
-        };
-    }
-
-    private int maxScroll() {
-        return Math.max(0, this.contentBottom() - (this.height - 44));
-    }
-
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        int max = this.maxScroll();
-        if (max <= 0) {
-            return super.mouseScrolled(mouseX, mouseY, delta);
-        }
-        int before = this.scroll;
-        this.scroll = Mth.clamp(this.scroll - (int) Math.round(delta * 24.0D), 0, max);
-        if (this.scroll != before) {
-            this.capture();
-            this.clearWidgets();
-            this.init();
-        }
-        return true;
-    }
-
-    /** 把当前页输入框里的值回读到字段（切页 / 保存前调用）。 */
     private void capture() {
         this.rangeClose = read(this.rangeCloseBox, this.rangeClose);
         this.rangeMid = read(this.rangeMidBox, this.rangeMid);
@@ -265,32 +312,26 @@ public class BotConfigScreen extends Screen {
         if (this.attachmentsBox != null) {
             this.attachments = this.attachmentsBox.getValue();
         }
-        if (this.teamBox != null) {
-            this.teamName = this.teamBox.getValue().trim();
-        }
-        if (this.pathBox != null) {
-            this.pathName = this.pathBox.getValue().trim();
-        }
         if (this.gunNbtBox != null) {
             this.gunNbt = this.gunNbtBox.getValue();
         }
         if (this.namesBox != null) {
             this.names = this.namesBox.getValue();
         }
-        this.endX = readDouble(this.endXBox, this.endX);
-        this.endY = readDouble(this.endYBox, this.endY);
-        this.endZ = readDouble(this.endZBox, this.endZ);
-    }
-
-    private static double readDouble(EditBox box, double fallback) {
-        if (box == null) {
-            return fallback;
+        if (this.teamBox != null) {
+            this.teamName = this.teamBox.getValue().trim();
         }
-        try {
-            return Double.parseDouble(box.getValue().trim());
-        } catch (NumberFormatException e) {
-            return fallback;
+        if (this.pathBox != null) {
+            this.pathName = this.pathBox.getValue().trim();
         }
+        this.endX = read(this.endXBox, this.endX);
+        this.endY = read(this.endYBox, this.endY);
+        this.endZ = read(this.endZBox, this.endZ);
+        if (this.dummyNameBox != null) {
+            this.dummyName = this.dummyNameBox.getValue();
+        }
+        this.dummyHealth = read(this.dummyHealthBox, this.dummyHealth);
+        this.dummySpeed = read(this.dummySpeedBox, this.dummySpeed);
     }
 
     private static double read(EditBox box, double fallback) {
@@ -305,168 +346,327 @@ public class BotConfigScreen extends Screen {
     }
 
     // ------------------------------------------------------------------
-    // 战斗页
+    // 战斗
     // ------------------------------------------------------------------
 
-    private void buildCombatPage() {
-        int left = this.width / 2 - 150;
-        int row = 52 - this.scroll;
-        int step = 24;
+    private void buildCombat() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
 
-        this.addRenderableWidget(Button.builder(tierText(), b -> {
-            this.tier = this.tier >= 5 ? 1 : this.tier + 1;
-            b.setMessage(tierText());
-        }).bounds(left, row, 300, 20).build());
-        row += step;
-
-        this.addRenderableWidget(Button.builder(friendlyFireText(), b -> {
-            this.friendlyFire = !this.friendlyFire;
-            b.setMessage(friendlyFireText());
-        }).bounds(left, row, 300, 20).build());
-        row += step;
-
-        this.addRenderableWidget(Button.builder(instantKillText(), b -> {
-            this.instantKill = !this.instantKill;
-            b.setMessage(instantKillText());
-        }).bounds(left, row, 300, 20).build());
-        row += step;
-
-        this.addRenderableWidget(Button.builder(killMessageText(), b -> {
-            this.killMessage = !this.killMessage;
-            b.setMessage(killMessageText());
-        }).bounds(left, row, 300, 20).build());
-        row += step;
-
-        this.addRenderableWidget(Button.builder(hostileText(), b -> {
-            this.hostileMobs = !this.hostileMobs;
-            b.setMessage(hostileText());
-        }).bounds(left, row, 300, 20).build());
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.tier", this.tier),
+                () -> Component.translatable("taczbotai.gui.tier", this.tier),
+                () -> this.tier = this.tier >= 5 ? 1 : this.tier + 1);
+        row += 22;
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.friendly_fire", onOff(this.friendlyFire)),
+                () -> Component.translatable("taczbotai.gui.friendly_fire", onOff(this.friendlyFire)),
+                () -> this.friendlyFire = !this.friendlyFire);
+        row += 22;
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.instant_kill", onOff(this.instantKill)),
+                () -> Component.translatable("taczbotai.gui.instant_kill", onOff(this.instantKill)),
+                () -> this.instantKill = !this.instantKill);
+        row += 22;
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.kill_message", onOff(this.killMessage)),
+                () -> Component.translatable("taczbotai.gui.kill_message", onOff(this.killMessage)),
+                () -> this.killMessage = !this.killMessage);
+        row += 22;
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.attack_hostile", onOff(this.hostileMobs)),
+                () -> Component.translatable("taczbotai.gui.attack_hostile", onOff(this.hostileMobs)),
+                () -> this.hostileMobs = !this.hostileMobs);
+        row += 22;
+        this.contentBottom = row + this.scroll + 16;
     }
 
     // ------------------------------------------------------------------
-    // 数值页
+    // 数值
     // ------------------------------------------------------------------
 
-    private void buildValuesPage() {
-        int colLeft = this.width / 2 - 150;
-        int colRight = this.width / 2 + 10;
-        int row = 54 - this.scroll;
-        int step = 22;
+    private void buildValues() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
+        int half = Math.max(120, (w - 12) / 2);
+        int col2 = x + half + 12;
 
-        this.rangeCloseBox = this.addLabeledNumber(colLeft, row, "taczbotai.gui.range.close", this.rangeClose);
-        row += step;
-        this.rangeMidBox = this.addLabeledNumber(colLeft, row, "taczbotai.gui.range.mid", this.rangeMid);
-        row += step;
-        this.rangeFarBox = this.addLabeledNumber(colLeft, row, "taczbotai.gui.range.far", this.rangeFar);
+        this.rangeCloseBox = this.labeledNumber(x, row, half, "taczbotai.gui.range_close", this.rangeClose);
+        this.rangeMidBox = this.labeledNumber(x, row + 22, half, "taczbotai.gui.range_mid", this.rangeMid);
+        this.rangeFarBox = this.labeledNumber(x, row + 44, half, "taczbotai.gui.range_far", this.rangeFar);
 
-        int rightRow = 54 - this.scroll;
-        this.reloadPistolBox = this.addLabeledNumber(colRight, rightRow, "taczbotai.gui.reload.pistol", this.reloadPistol);
-        rightRow += step;
-        this.reloadRifleBox = this.addLabeledNumber(colRight, rightRow, "taczbotai.gui.reload.rifle", this.reloadRifle);
-        rightRow += step;
-        this.reloadMarksmanBox = this.addLabeledNumber(colRight, rightRow, "taczbotai.gui.reload.marksman", this.reloadMarksman);
-        rightRow += step;
-        this.reloadSniperBox = this.addLabeledNumber(colRight, rightRow, "taczbotai.gui.reload.sniper", this.reloadSniper);
-        rightRow += step;
-        this.reloadMgBox = this.addLabeledNumber(colRight, rightRow, "taczbotai.gui.reload.mg", this.reloadMg);
-        rightRow += step;
-        this.reloadHeavyBox = this.addLabeledNumber(colRight, rightRow, "taczbotai.gui.reload.heavy", this.reloadHeavy);
-        rightRow += step;
-        this.reloadOtherBox = this.addLabeledNumber(colRight, rightRow, "taczbotai.gui.reload.other", this.reloadOther);
-    }
+        this.reloadPistolBox = this.labeledNumber(col2, row, half, "taczbotai.gui.reload_pistol", this.reloadPistol);
+        this.reloadRifleBox = this.labeledNumber(col2, row + 22, half, "taczbotai.gui.reload_rifle", this.reloadRifle);
+        this.reloadMarksmanBox = this.labeledNumber(col2, row + 44, half, "taczbotai.gui.reload_marksman", this.reloadMarksman);
+        this.reloadSniperBox = this.labeledNumber(col2, row + 66, half, "taczbotai.gui.reload_sniper", this.reloadSniper);
+        this.reloadMgBox = this.labeledNumber(col2, row + 88, half, "taczbotai.gui.reload_mg", this.reloadMg);
+        this.reloadHeavyBox = this.labeledNumber(col2, row + 110, half, "taczbotai.gui.reload_heavy", this.reloadHeavy);
+        this.reloadOtherBox = this.labeledNumber(x, row + 66, half, "taczbotai.gui.reload_other", this.reloadOther);
 
-    private EditBox addLabeledNumber(int x, int y, String labelKey, double value) {
-        String text = Component.translatable(labelKey).getString();
-        this.addRenderableWidget(new StringWidget(x, y + 4, 145, 12, Component.literal(text), this.font));
-        EditBox box = new EditBox(this.font, x + 148, y, 46, 16, Component.literal(text));
-        box.setMaxLength(8);
-        box.setValue(format(value));
-        this.addRenderableWidget(box);
-        return box;
+        this.contentBottom = row + 110 + 22 + this.scroll;
     }
 
     // ------------------------------------------------------------------
-    // 装备 / 队伍 / 路径页
+    // 装备
     // ------------------------------------------------------------------
 
-    private void buildMiscPage() {
-        int left = this.width / 2 - 150;
-        int row = 54 - this.scroll;
-        int step = 24;
+    private void buildEquip() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
 
-        this.gunIdBox = this.addLabeledText(left, row, "taczbotai.gui.gun_id_short", this.gunId, 190);
-        row += step;
-        this.attachmentsBox = this.addLabeledText(left, row, "taczbotai.gui.attachments_short", this.attachments, 190);
-        this.attachmentsBox.setMaxLength(4096);
-        row += step;
-
-        this.gunNbtBox = this.addLabeledText(left, row, "taczbotai.gui.gun_nbt_short", this.gunNbt, 76);
-        // NBT 可能上千字符：EditBox 默认 512 会被截断，这里放宽到 64k；
-        // 但配置是 SERVER 类型，NBT 只能由服务端写，所以这里只读显示。
-        this.gunNbtBox.setMaxLength(65536);
+        this.gunIdBox = this.labeledText(x, row, w, "taczbotai.gui.gun_id", this.gunId, 4096);
+        this.gunIdBox.setSuggestion(this.gunId == null || this.gunId.isEmpty() ? "tacz:m1911" : "");
+        row += 22;
+        this.attachmentsBox = this.labeledText(x, row, w, "taczbotai.gui.attachments", this.attachments, 4096);
+        this.attachmentsBox.setSuggestion(this.attachments == null || this.attachments.isBlank()
+                ? "SCOPE=tacz:scope_acog_ta31,GRIP=tacz:grip_vertical_talon" : "");
+        row += 22;
+        this.gunNbtBox = this.labeledText(x, row, w - 96, "taczbotai.gui.gun_nbt", this.gunNbt, 65536);
         this.gunNbtBox.setEditable(false);
-        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.read_gun_nbt"), b ->
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.gun_nbt.read"), b ->
                         this.readHeldGunNbt())
-                .bounds(left + 152, row, 68, 16).build());
-        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.clear_nbt"), b -> {
+                .bounds(x + w - 92, row, 44, 16).build());
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.gun_nbt.clear"), b -> {
             this.gunNbt = "";
             if (this.gunNbtBox != null) {
                 this.gunNbtBox.setValue("");
             }
-            this.sendCommand("taczbotai gun clear");
-        }).bounds(left + 224, row, 68, 16).build());
-        row += step;
+        }).bounds(x + w - 44, row, 44, 16).build());
+        row += 26;
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.equip"), b ->
+                        this.sendCommand("taczbotai equip"))
+                .bounds(x, row, (w - 8) / 2, 18).build());
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.gun_nbt.copy"), b -> {
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player != null) {
+                minecraft.keyboardHandler.setClipboard(this.gunNbt == null ? "" : this.gunNbt);
+                minecraft.player.displayClientMessage(Component.translatable(
+                        "taczbotai.gui.gun_nbt.copied", this.gunNbt == null ? 0 : this.gunNbt.length()), false);
+            }
+        }).bounds(x + (w + 8) / 2, row, (w - 8) / 2, 18).build());
 
-        // 名字列表（逗号分隔）—— 存在服务器配置里，保存时通过 config set 下发
-        this.namesBox = this.addLabeledText(left, row, "taczbotai.gui.names_short", this.names, 190);
-        this.namesBox.setMaxLength(4096);
-        row += step + 4;
+        this.contentBottom = row + 18 + this.scroll + 16;
+    }
 
-        this.teamBox = this.addLabeledText(left, row, "taczbotai.gui.team_short", this.teamName, 70);
+    // ------------------------------------------------------------------
+    // 队伍
+    // ------------------------------------------------------------------
+
+    private void buildTeam() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
+
+        this.teamBox = this.labeledText(x, row, w - 100, "taczbotai.gui.team", this.teamName, 64);
         this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.set_team"), b ->
                         this.sendCommand("taczbotai team set " + this.teamBox.getValue().trim()))
-                .bounds(left + 150, row, 70, 16).build());
+                .bounds(x + w - 96, row, 46, 16).build());
         this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.clear_team"), b ->
                         this.sendCommand("taczbotai team clear"))
-                .bounds(left + 224, row, 70, 16).build());
-        row += step;
+                .bounds(x + w - 46, row, 46, 16).build());
+        row += 24;
 
-        this.pathBox = this.addLabeledText(left, row, "taczbotai.gui.path_short", this.pathName, 70);
+        this.namesBox = this.labeledText(x, row, w, "taczbotai.gui.names", this.names, 4096);
+        row += 24;
+
+        Component[] modeText = new Component[1];
+        modeText[0] = Component.translatable("taczbotai.gui.name_mode",
+                Component.translatable(nameModeKey(this.nameMode)));
+        this.addRenderableWidget(Button.builder(modeText[0], b -> {
+            this.nameMode = nextNameMode(this.nameMode);
+            b.setMessage(Component.translatable("taczbotai.gui.name_mode",
+                    Component.translatable(nameModeKey(this.nameMode))));
+            this.sendCommand("taczbotai team namemode " + this.nameMode + " 64");
+        }).bounds(x, row, w, 18).build());
+        row += 24;
+
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.show_name_on"), b ->
+                        this.sendCommand("taczbotai team showname true 64"))
+                .bounds(x, row, (w - 8) / 2, 18).build());
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.show_name_off"), b ->
+                        this.sendCommand("taczbotai team showname false 64"))
+                .bounds(x + (w + 8) / 2, row, (w - 8) / 2, 18).build());
+
+        this.contentBottom = row + 18 + this.scroll + 16;
+    }
+
+    // ------------------------------------------------------------------
+    // 路径
+    // ------------------------------------------------------------------
+
+    private void buildPath() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
+
+        this.pathBox = this.labeledText(x, row, w - 190, "taczbotai.gui.path_short", this.pathName, 128);
         this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.assign_path"), b ->
                         this.sendCommand("taczbotai path assign " + this.pathBox.getValue().trim()))
-                .bounds(left + 150, row, 70, 16).build());
+                .bounds(x + w - 186, row, 86, 16).build());
         this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.list_paths"), b ->
                         this.sendCommand("taczbotai path list"))
-                .bounds(left + 224, row, 70, 16).build());
-        row += step + 4;
+                .bounds(x + w - 96, row, 96, 16).build());
+        row += 24;
 
-        this.addRenderableWidget(Button.builder(this.pathModeText(), b -> {
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.path_mode",
+                Component.translatable(pathModeKey(this.pathMode))), b -> {
             this.pathMode = nextPathMode(this.pathMode);
-            b.setMessage(this.pathModeText());
-        }).bounds(left, row, 300, 20).build());
-        row += step + 4;
+            b.setMessage(Component.translatable("taczbotai.gui.path_mode",
+                    Component.translatable(pathModeKey(this.pathMode))));
+        }).bounds(x, row, w, 18).build());
+        row += 24;
 
-        this.addRenderableWidget(Button.builder(this.nameModeText(), b -> {
-            this.nameMode = nextNameMode(this.nameMode);
-            b.setMessage(this.nameModeText());
-            this.sendCommand("taczbotai team namemode " + this.nameMode + " 64");
-        }).bounds(left, row, 300, 20).build());
-        row += step + 4;
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.clear_path"), b ->
+                        this.sendCommand("taczbotai path clear"))
+                .bounds(x, row, (w - 8) / 2, 18).build());
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.path_hint"), b -> {
+        }).bounds(x + (w + 8) / 2, row, (w - 8) / 2, 18).build()).active = false;
+
+        this.contentBottom = row + 18 + this.scroll + 16;
+    }
+
+    // ------------------------------------------------------------------
+    // 结算
+    // ------------------------------------------------------------------
+
+    private void buildMatch() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
+
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.match_teleport", onOff(this.matchTeleport)),
+                () -> Component.translatable("taczbotai.gui.match_teleport", onOff(this.matchTeleport)),
+                () -> this.matchTeleport = !this.matchTeleport);
+        row += 22;
+
+        int third = Math.max(70, (w - 24) / 3);
+        this.endXBox = this.labeledTiny(x, row, third, "taczbotai.gui.end_x", this.endX);
+        this.endYBox = this.labeledTiny(x + third + 12, row, third, "taczbotai.gui.end_y", this.endY);
+        this.endZBox = this.labeledTiny(x + (third + 12) * 2, row, third, "taczbotai.gui.end_z", this.endZ);
+        row += 24;
+
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.match_leave_team", onOff(this.matchLeaveTeam)),
+                () -> Component.translatable("taczbotai.gui.match_leave_team", onOff(this.matchLeaveTeam)),
+                () -> this.matchLeaveTeam = !this.matchLeaveTeam);
+        row += 22;
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.match_clear_inv", onOff(this.matchClearInv)),
+                () -> Component.translatable("taczbotai.gui.match_clear_inv", onOff(this.matchClearInv)),
+                () -> this.matchClearInv = !this.matchClearInv);
+
+        this.contentBottom = row + 22 + this.scroll + 16;
+    }
+
+    // ------------------------------------------------------------------
+    // 测试人员
+    // ------------------------------------------------------------------
+
+    private void buildDummy() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
+
+        this.dummyNameBox = this.labeledText(x, row, w, "taczbotai.gui.dummy_name", this.dummyName, 128);
+        row += 22;
+        this.dummyHealthBox = this.labeledNumber(x, row, Math.max(120, w / 2), "taczbotai.gui.dummy_health", this.dummyHealth);
+        row += 24;
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.dummy_ai", onOff(this.dummyAi)),
+                () -> Component.translatable("taczbotai.gui.dummy_ai", onOff(this.dummyAi)),
+                () -> this.dummyAi = !this.dummyAi);
+        row += 24;
+        this.dummySpeedBox = this.labeledNumber(x, row, Math.max(120, w / 2), "taczbotai.gui.dummy_speed", this.dummySpeed);
+        row += 24;
+        this.toggle(x, row, w, Component.translatable("taczbotai.gui.dummy_invulnerable", onOff(this.dummyInvulnerable)),
+                () -> Component.translatable("taczbotai.gui.dummy_invulnerable", onOff(this.dummyInvulnerable)),
+                () -> this.dummyInvulnerable = !this.dummyInvulnerable);
+        row += 24;
+
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.testsub"), b ->
+                        this.sendCommand("taczbotai testsub 1"))
+                .bounds(x, row, (w - 8) / 2, 18).build());
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.spawn"), b ->
+                        this.sendCommand("taczbotai spawn 1"))
+                .bounds(x + (w + 8) / 2, row, (w - 8) / 2, 18).build());
+
+        this.contentBottom = row + 18 + this.scroll + 16;
+    }
+
+    // ------------------------------------------------------------------
+    // 操作
+    // ------------------------------------------------------------------
+
+    private void buildActions() {
+        int x = this.rightX();
+        int w = this.rightWidth();
+        int row = 32 - this.scroll;
 
         this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.equip"), b ->
                         this.sendCommand("taczbotai equip"))
-                .bounds(left, row, 146, 20).build());
+                .bounds(x, row, w, 20).build());
+        row += 24;
         this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.spawn"), b ->
                         this.sendCommand("taczbotai spawn 1"))
-                .bounds(left + 154, row, 146, 20).build());
+                .bounds(x, row, w, 20).build());
+        row += 24;
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.testsub"), b ->
+                        this.sendCommand("taczbotai testsub 1"))
+                .bounds(x, row, w, 20).build());
+        row += 24;
+        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.info"), b ->
+                        this.sendCommand("taczbotai info"))
+                .bounds(x, row, w, 20).build());
+
+        this.contentBottom = row + 20 + this.scroll + 16;
     }
 
-    private Component pathModeText() {
-        return Component.translatable("taczbotai.gui.path_mode", Component.translatable(pathModeKey(this.pathMode)));
+    // ------------------------------------------------------------------
+    // 控件工厂
+    // ------------------------------------------------------------------
+
+    private void toggle(int x, int y, int width, Component initial, java.util.function.Supplier<Component> text,
+                        Runnable action) {
+        this.addRenderableWidget(Button.builder(initial, b -> {
+            action.run();
+            b.setMessage(text.get());
+        }).bounds(x, y, width, 18).build());
     }
 
-    private Component nameModeText() {
-        return Component.translatable("taczbotai.gui.name_mode", Component.translatable(nameModeKey(this.nameMode)));
+    private EditBox labeledText(int x, int y, int width, String labelKey, String value, int maxLength) {
+        return this.labeledText(x, y, width, labelKey, value, maxLength, 120);
+    }
+
+    /** 窄标签行（X/Y/Z 这类单字符标签用它，避免占位过宽把输入框挤出屏幕）。 */
+    private EditBox labeledTiny(int x, int y, int width, String labelKey, double value) {
+        return this.labeledText(x, y, width, labelKey, format(value), 16, 16);
+    }
+
+    private EditBox labeledText(int x, int y, int width, String labelKey, String value,
+                                int maxLength, int maxLabelWidth) {
+        String label = Component.translatable(labelKey).getString();
+        int labelWidth = Math.min(maxLabelWidth, Math.max(14, this.font.width(label) + 6));
+        this.addRenderableWidget(new StringWidget(x, y + 4, labelWidth, 12, Component.literal(label), this.font));
+        EditBox box = new EditBox(this.font, x + labelWidth + 4, y,
+                Math.max(40, width - labelWidth - 4), 16, Component.literal(label));
+        box.setMaxLength(maxLength);
+        box.setValue(value == null ? "" : value);
+        this.addRenderableWidget(box);
+        return box;
+    }
+
+    private EditBox labeledNumber(int x, int y, int width, String labelKey, double value) {
+        return this.labeledText(x, y, width, labelKey, format(value), 16);
+    }
+
+    // ------------------------------------------------------------------
+    // 文本 / 保存
+    // ------------------------------------------------------------------
+
+    private static Component onOff(boolean value) {
+        return Component.translatable(value ? "taczbotai.gui.on" : "taczbotai.gui.off");
+    }
+
+    private static String format(double value) {
+        if (Math.abs(value - Math.rint(value)) < 0.0001D) {
+            return String.format(Locale.ROOT, "%.0f", value);
+        }
+        return String.format(Locale.ROOT, "%.2f", value);
     }
 
     private static String nameModeKey(String mode) {
@@ -509,93 +709,6 @@ public class BotConfigScreen extends Screen {
         return "loop";
     }
 
-    // ------------------------------------------------------------------
-    // 结算页（对局结束处理）
-    // ------------------------------------------------------------------
-
-    private void buildMatchPage() {
-        int left = this.width / 2 - 150;
-        int row = 52 - this.scroll;
-        int step = 24;
-
-        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.match_teleport",
-                onOff(this.matchTeleport)), b -> {
-            this.matchTeleport = !this.matchTeleport;
-            b.setMessage(Component.translatable("taczbotai.gui.match_teleport", onOff(this.matchTeleport)));
-        }).bounds(left, row, 300, 20).build());
-        row += step;
-
-        this.endXBox = this.addLabeledText(left, row, "taczbotai.gui.end_x", String.format(Locale.ROOT, "%.1f", this.endX), 60);
-        row += step;
-        this.endYBox = this.addLabeledText(left, row, "taczbotai.gui.end_y", String.format(Locale.ROOT, "%.1f", this.endY), 60);
-        row += step;
-        this.endZBox = this.addLabeledText(left, row, "taczbotai.gui.end_z", String.format(Locale.ROOT, "%.1f", this.endZ), 60);
-        row += step + 4;
-
-        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.match_leave_team",
-                onOff(this.matchLeaveTeam)), b -> {
-            this.matchLeaveTeam = !this.matchLeaveTeam;
-            b.setMessage(Component.translatable("taczbotai.gui.match_leave_team", onOff(this.matchLeaveTeam)));
-        }).bounds(left, row, 300, 20).build());
-        row += step;
-
-        this.addRenderableWidget(Button.builder(Component.translatable("taczbotai.gui.match_clear_inv",
-                onOff(this.matchClearInv)), b -> {
-            this.matchClearInv = !this.matchClearInv;
-            b.setMessage(Component.translatable("taczbotai.gui.match_clear_inv", onOff(this.matchClearInv)));
-        }).bounds(left, row, 300, 20).build());
-    }
-
-    private EditBox addLabeledText(int x, int y, String labelKey, String value, int boxWidth) {
-        String text = Component.translatable(labelKey).getString();
-        this.addRenderableWidget(new StringWidget(x, y + 4, 70, 12, Component.literal(text), this.font));
-        EditBox box = new EditBox(this.font, x + 72, y, boxWidth, 16, Component.literal(text));
-        box.setMaxLength(512);
-        box.setValue(value == null ? "" : value);
-        this.addRenderableWidget(box);
-        return box;
-    }
-
-    // ------------------------------------------------------------------
-    // 文本 / 保存 / 指令
-    // ------------------------------------------------------------------
-
-    private Component tierText() {
-        return Component.translatable("taczbotai.gui.tier", this.tier);
-    }
-
-    private Component friendlyFireText() {
-        return Component.translatable("taczbotai.gui.friendly_fire", onOff(this.friendlyFire));
-    }
-
-    private Component instantKillText() {
-        return Component.translatable("taczbotai.gui.instant_kill", onOff(this.instantKill));
-    }
-
-    private Component killMessageText() {
-        return Component.translatable("taczbotai.gui.kill_message", onOff(this.killMessage));
-    }
-
-    private Component hostileText() {
-        return Component.translatable("taczbotai.gui.attack_hostile", onOff(this.hostileMobs));
-    }
-
-    private static Component onOff(boolean value) {
-        return Component.translatable(value ? "taczbotai.gui.on" : "taczbotai.gui.off");
-    }
-
-    private static String format(double value) {
-        if (Math.abs(value - Math.rint(value)) < 0.0001D) {
-            return String.format(Locale.ROOT, "%.0f", value);
-        }
-        return String.format(Locale.ROOT, "%.2f", value);
-    }
-
-    /**
-     * 保存：配置现在属于 SERVER 类型（客户端只有只读副本），所以不能本地写，
-     * 统一发给服务端执行 `/taczbotai config set <key> <value>`。
-     * 该指令要求权限等级 2 —— 也就是只有房主 / 服务器管理员能改，普通成员会被拒绝。
-     */
     private void applyConfig() {
         this.capture();
         sendConfig("attack.attackTier", String.valueOf(this.tier));
@@ -615,17 +728,22 @@ public class BotConfigScreen extends Screen {
         sendConfig("reload.heavySeconds", format(clamp(this.reloadHeavy, 0.1D, 60.0D)));
         sendConfig("reload.otherSeconds", format(clamp(this.reloadOther, 0.1D, 60.0D)));
         sendConfig("bot.gunId", this.gunId == null ? "" : this.gunId);
-        sendConfig("team.defaultTeam", this.teamName == null ? "" : this.teamName);
         sendConfig("bot.attachments", this.attachments == null ? "" : this.attachments);
-        sendConfig("path.pathMode", this.pathMode == null ? "loop" : this.pathMode);
-        sendConfig("bot.nameTagMode", this.nameMode == null ? "team" : this.nameMode);
         sendConfig("bot.names", this.names == null ? "" : this.names);
+        sendConfig("bot.nameTagMode", this.nameMode == null ? "team" : this.nameMode);
+        sendConfig("team.defaultTeam", this.teamName == null ? "" : this.teamName);
+        sendConfig("path.pathMode", this.pathMode == null ? "loop" : this.pathMode);
         sendConfig("match.endTeleport", String.valueOf(this.matchTeleport));
         sendConfig("match.endX", format(this.endX));
         sendConfig("match.endY", format(this.endY));
         sendConfig("match.endZ", format(this.endZ));
         sendConfig("match.endLeaveTeam", String.valueOf(this.matchLeaveTeam));
         sendConfig("match.endClearInventory", String.valueOf(this.matchClearInv));
+        sendConfig("dummy.name", this.dummyName == null ? "" : this.dummyName);
+        sendConfig("dummy.health", format(clamp(this.dummyHealth, 1.0D, 10240.0D)));
+        sendConfig("dummy.invulnerable", String.valueOf(this.dummyInvulnerable));
+        sendConfig("dummy.aiEnabled", String.valueOf(this.dummyAi));
+        sendConfig("dummy.aiSpeed", format(clamp(this.dummySpeed, 0.0D, 1.0D)));
     }
 
     private void sendConfig(String key, String value) {
@@ -648,11 +766,6 @@ public class BotConfigScreen extends Screen {
         }
     }
 
-    /**
-     * 读取主手 TACZ 枪械 NBT：
-     *  - 客户端拿 SNBT 复制到剪贴板（方便外部使用）；
-     *  - 同时发 `/taczbotai gun`，由服务端把整段 NBT 写进配置（客户端无权写 SERVER 配置）。
-     */
     private void readHeldGunNbt() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) {
@@ -672,43 +785,42 @@ public class BotConfigScreen extends Screen {
         minecraft.keyboardHandler.setClipboard(snbt);
         minecraft.player.displayClientMessage(
                 Component.translatable("taczbotai.gui.gun_nbt.copied", snbt.length()), false);
-        // 交给服务端写入配置（需要房主/管理员权限）
         minecraft.player.connection.sendCommand("taczbotai gun");
     }
+
+    // ------------------------------------------------------------------
+    // 渲染
+    // ------------------------------------------------------------------
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(graphics);
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 6, VALUE_COLOR);
 
-        if (this.page == Page.VALUES) {
-            graphics.drawString(this.font, Component.translatable("taczbotai.gui.section.range"),
-                    this.width / 2 - 150, 40, LABEL_COLOR, false);
-            graphics.drawString(this.font, Component.translatable("taczbotai.gui.section.reload"),
-                    this.width / 2 + 10, 40, LABEL_COLOR, false);
-        } else if (this.page == Page.MISC) {
-            graphics.drawString(this.font, Component.translatable("taczbotai.gui.section.equip"),
-                    this.width / 2 - 150, 40, LABEL_COLOR, false);
-        }
+        int x = this.leftX();
+        int y = 32;
+        int w = this.leftWidth();
+        int listBottom = y + Section.values().length * 21 + 6;
+        graphics.fill(x - 4, 24, x + w + 4, listBottom, 0x30FFFFFF);
+        graphics.fill(this.rightX() - 6, 24, this.width - 12, this.height - 32, 0x18FFFFFF);
 
         super.render(graphics, mouseX, mouseY, partialTick);
         this.renderScrollbar(graphics);
     }
 
-    /** 右侧滚动条（内容超出时显示，纯指示用，拖动不处理）。 */
     private void renderScrollbar(GuiGraphics graphics) {
         int max = this.maxScroll();
         if (max <= 0) {
             return;
         }
-        int trackTop = 44;
-        int trackBottom = this.height - 36;
-        int trackHeight = trackBottom - trackTop;
-        int x = this.width - 8;
-        graphics.fill(x, trackTop, x + 4, trackBottom, 0x40FFFFFF);
-        int thumbHeight = Math.max(16, trackHeight * trackHeight / (trackHeight + max));
-        int thumbTop = trackTop + (int) ((trackHeight - thumbHeight) * ((double) this.scroll / max));
-        graphics.fill(x, thumbTop, x + 4, thumbTop + thumbHeight, 0xC0FFFFFF);
+        int top = 30;
+        int bottom = this.height - 32;
+        int track = bottom - top;
+        int x = this.width - 10;
+        graphics.fill(x, top, x + 4, bottom, 0x40FFFFFF);
+        int thumb = Math.max(16, track * track / (track + max));
+        int thumbTop = top + (int) ((track - thumb) * ((double) this.scroll / max));
+        graphics.fill(x, thumbTop, x + 4, thumbTop + thumb, 0xC0FFFFFF);
     }
 
     @Override

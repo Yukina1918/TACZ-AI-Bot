@@ -8,6 +8,10 @@ import com.taczbotai.config.BotConfig;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.PathfinderMob;
+import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
+import net.minecraft.world.entity.ai.goal.RandomStrollGoal;
+import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.MobType;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -29,7 +33,7 @@ import javax.annotation.Nullable;
  *  - 永不自然消失（persistenceRequired）；
  *  - 名字与血量来自配置 {@code [dummy]}，默认名字「测试人员」。
  */
-public class TestSubjectEntity extends Mob {
+public class TestSubjectEntity extends PathfinderMob {
 
     public TestSubjectEntity(EntityType<? extends TestSubjectEntity> type, Level level) {
         super(type, level);
@@ -47,9 +51,17 @@ public class TestSubjectEntity extends Mob {
                 .add(Attributes.FOLLOW_RANGE, 0.0D);
     }
 
-    /** 没有任何 AI 行为。 */
+    /**
+     * 默认不注册任何行为（配合 setNoAi(true) 完全静止）。
+     * 若在配置里开启 dummy.aiEnabled，则重新启用 AI，并让它在原地附近慢速散步。
+     */
     @Override
     protected void registerGoals() {
+        this.goalSelector.addGoal(1, new net.minecraft.world.entity.ai.goal.FloatGoal(this));
+        this.goalSelector.addGoal(2, new RandomStrollGoal(this, 1.0D, 200));
+        this.goalSelector.addGoal(3, new net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal(this, 0.8D));
+        this.goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(5, new RandomLookAroundGoal(this));
     }
 
     /** 应用配置里的名字、血量、无敌开关。 */
@@ -61,6 +73,12 @@ public class TestSubjectEntity extends Mob {
         this.setCustomNameVisible(true);
 
         double health = BotConfig.guiValue(BotConfig.DUMMY_HEALTH);
+        boolean ai = BotConfig.guiValue(BotConfig.DUMMY_AI_ENABLED);
+        this.setNoAi(!ai);
+        var speed = this.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speed != null) {
+            speed.setBaseValue(ai ? BotConfig.guiValue(BotConfig.DUMMY_AI_SPEED) : 0.0D);
+        }
         var maxHealth = this.getAttribute(Attributes.MAX_HEALTH);
         if (maxHealth != null) {
             maxHealth.setBaseValue(health);
@@ -107,8 +125,4 @@ public class TestSubjectEntity extends Mob {
         return MobType.UNDEFINED;
     }
 
-    @Override
-    public void setCustomName(@Nullable Component name) {
-        super.setCustomName(name);
-    }
 }
