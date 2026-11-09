@@ -91,6 +91,11 @@ public final class BotConfig {
     public static final ForgeConfigSpec.DoubleValue ALERT_RADIUS_UNSILENCED;
     public static final ForgeConfigSpec.DoubleValue ALERT_RADIUS_SILENCED;
 
+    // ---- 测试人员（静止靶子）----
+    public static final ForgeConfigSpec.ConfigValue<String> DUMMY_NAME;
+    public static final ForgeConfigSpec.DoubleValue DUMMY_HEALTH;
+    public static final ForgeConfigSpec.BooleanValue DUMMY_INVULNERABLE;
+
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
 
@@ -251,6 +256,16 @@ public final class BotConfig {
                 .define("endLeaveTeam", false);
         MATCH_END_CLEAR_INVENTORY = b.comment("Clear player inventories when a match ends.")
                 .define("endClearInventory", false);
+        b.pop();
+
+        b.comment("Test subject: a harmless, immobile target dummy.")
+                .push("dummy");
+        DUMMY_NAME = b.comment("Display name of the test subject.")
+                .define("name", "测试人员");
+        DUMMY_HEALTH = b.comment("Max health of the test subject.")
+                .defineInRange("health", 20.0D, 1.0D, 10240.0D);
+        DUMMY_INVULNERABLE = b.comment("Make the test subject invulnerable.")
+                .define("invulnerable", false);
         b.pop();
 
         SPEC = b.build();

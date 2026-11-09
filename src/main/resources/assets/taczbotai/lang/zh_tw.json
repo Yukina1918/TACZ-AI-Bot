@@ -133,5 +133,8 @@
     "taczbotai.gui.end_y":  "Y",
     "taczbotai.gui.end_z":  "Z",
     "taczbotai.gui.match_leave_team":  "結束時退出隊伍: %s",
-    "taczbotai.gui.match_clear_inv":  "結束時清空背包: %s"
+    "taczbotai.gui.match_clear_inv":  "結束時清空背包: %s",
+    "entity.taczbotai.test_subject":  "測試人員",
+    "item.taczbotai.test_subject_spawn_egg":  "測試人員生怪蛋",
+    "taczbotai.command.testsub":  "已生成 %s 個測試人員。"
 }

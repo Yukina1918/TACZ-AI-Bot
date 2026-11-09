@@ -52,6 +52,8 @@
 **其它**
 
 - 史蒂夫骨架 + 4 张内置皮肤（资源包可覆盖）
+- 内置「测试人员」静止靶子：无 AI、不会移动、没有攻击性，名字与血量可配置
+  - 默认皮肤 `test_subject.png`（BF4 皮肤），资源包用同名路径 `assets/taczbotai/textures/entity/test_subject.png` 即可覆盖
 - 图形界面配置（四页签，支持滚轮翻页），SERVER 配置仅房主/管理员可改
 - 简体中文 / 繁體中文 / English 三语
 
@@ -86,6 +88,9 @@
 
 # 查看最近一只的状态
 /taczbotai info
+
+# 放几个静止靶子测试伤害
+/taczbotai testsub 3
 ```
 
 路径巡逻：
@@ -115,6 +120,7 @@
 |---|---|
 | `/taczbotai spawn [数量] [队伍] [武器]` | 在脚下生成（1~32）。队伍省略用配置默认队；武器可写枪械 id 或 SNBT |
 | `/taczbotai summon <x> <y> <z> <数量> [队伍] [枪械]` | 在指定坐标生成（支持 `~` 相对坐标，数量 1~64） |
+| `/taczbotai testsub [数量]` | 生成静止靶子「测试人员」（1~64 个，默认 1） |
 | `/taczbotai equip` | 按当前配置重新给最近的 bot 发枪 |
 | `/taczbotai skin <0-4>` | 设置最近一只的皮肤（0 = 原版史蒂夫，1~4 = 内置迷彩） |
 | `/taczbotai tier <1-5>` | 全局攻击档位（写入该存档配置，立即生效） |
@@ -235,6 +241,10 @@ saves/<世界名>/serverconfig/taczbotai-server.toml
 [path]
     patrolSpeed = 1.0
     recordMode = "node"
+[dummy]
+    name = "测试人员"          # 靶子头顶名字
+    health = 20.0            # 最大生命值
+    invulnerable = false     # 是否无敌
 [match]
     endTeleport = true        # 对局结束传送玩家
     endX = 0.0
@@ -339,7 +349,8 @@ build/libs/taczbotai-2.0.0.jar
 
 | 版本 | 变更 |
 |---|---|
-| **2.0.0** | 基线升级 TACZ 1.2.0；新增枪声惊动；性能优化；MIT 开源 |
+| **2.1.0** | 新增无 AI 静止靶子「测试人员」（名字/血量可配置，皮肤可在资源包覆盖） |
+| 2.0.0 | 基线升级 TACZ 1.2.0；新增枪声惊动；性能优化；MIT 开源 |
 | 1.3.8 | 对局结算（传送 / 退队 / 清背包）配置化，GUI 新增「结算」页 |
 | 1.3.7 | 修正 PVE 结算（1 真人 vs N bot 可判胜负） |
 | 1.3.6 | 修正阵营误判 |

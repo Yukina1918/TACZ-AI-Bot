@@ -7,6 +7,7 @@ package com.taczbotai;
 import com.mojang.logging.LogUtils;
 import com.taczbotai.config.BotConfig;
 import com.taczbotai.entity.TaczBotEntity;
+import com.taczbotai.entity.TestSubjectEntity;
 import com.taczbotai.registry.ModEntities;
 import com.taczbotai.registry.ModItems;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -53,11 +54,13 @@ public class TaczBotAi {
 
     private void onAttributeCreation(EntityAttributeCreationEvent event) {
         event.put(ModEntities.TACZ_BOT.get(), TaczBotEntity.createAttributes().build());
+        event.put(ModEntities.TEST_SUBJECT.get(), TestSubjectEntity.createAttributes().build());
     }
 
     private void onBuildTabs(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(ModItems.TACZ_BOT_SPAWN_EGG);
+            event.accept(ModItems.TEST_SUBJECT_SPAWN_EGG);
         }
     }
 

@@ -18,6 +18,9 @@ public final class ModItems {
     public static final RegistryObject<Item> TACZ_BOT_SPAWN_EGG = ITEMS.register("tacz_bot_spawn_egg",
             () -> new ForgeSpawnEggItem(ModEntities.TACZ_BOT, 0x3E5A33, 0xC8A165, new Item.Properties()));
 
+    public static final RegistryObject<Item> TEST_SUBJECT_SPAWN_EGG = ITEMS.register("test_subject_spawn_egg",
+            () -> new ForgeSpawnEggItem(ModEntities.TEST_SUBJECT, 0x8A8A8A, 0xD32F2F, new Item.Properties()));
+
     private ModItems() {
     }
 }

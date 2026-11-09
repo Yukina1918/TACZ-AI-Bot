@@ -190,7 +190,13 @@ public final class BotCommand {
                         .executes(ctx -> saveHeldGunNbt(ctx.getSource()))
                         .then(Commands.literal("clear").executes(ctx -> clearGunNbt(ctx.getSource())))
                         .then(Commands.literal("show").executes(ctx -> showGunNbt(ctx.getSource()))))
-                .then(Commands.literal("summon")
+                .then(Commands.literal("testsub")
+                        .executes(ctx -> spawnTestSubjects(ctx.getSource(), 1))
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 64))
+                                .suggests((ctx, b) -> net.minecraft.commands.SharedSuggestionProvider
+                                        .suggest(java.util.List.of("1", "2", "5", "10"), b))
+                                .executes(ctx -> spawnTestSubjects(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "count")))))                .then(Commands.literal("summon")
                         .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.Vec3Argument.vec3())
                                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 64))
                                         .executes(ctx -> summon(ctx.getSource(),
@@ -858,6 +864,29 @@ public final class BotCommand {
         return net.minecraft.commands.SharedSuggestionProvider.suggest(values, builder);
     }
 
+    /** /taczbotai testsub [数量] —— 生成不会移动、不会攻击的测试人员靶子。 */
+    private static int spawnTestSubjects(CommandSourceStack source, int count) {
+        ServerLevel level = source.getLevel();
+        Vec3 pos = source.getPosition();
+        int spawned = 0;
+        for (int i = 0; i < count; i++) {
+            com.taczbotai.entity.TestSubjectEntity subject =
+                    com.taczbotai.registry.ModEntities.TEST_SUBJECT.get().create(level);
+            if (subject == null) {
+                continue;
+            }
+            double offsetX = (level.getRandom().nextDouble() - 0.5D) * 2.0D;
+            double offsetZ = (level.getRandom().nextDouble() - 0.5D) * 2.0D;
+            subject.moveTo(pos.x + offsetX, pos.y, pos.z + offsetZ, level.getRandom().nextFloat() * 360.0F, 0.0F);
+            subject.finalizeSpawn(level, level.getCurrentDifficultyAt(subject.blockPosition()),
+                    MobSpawnType.COMMAND, null, null);
+            level.addFreshEntity(subject);
+            spawned++;
+        }
+        final int result = spawned;
+        source.sendSuccess(() -> Component.translatable("taczbotai.command.testsub", result), true);
+        return spawned;
+    }
     private static com.mojang.brigadier.builder.ArgumentBuilder<CommandSourceStack, ?> recordModeTree(String mode) {
         return Commands.literal("start")
                 .then(Commands.argument("name", StringArgumentType.word())

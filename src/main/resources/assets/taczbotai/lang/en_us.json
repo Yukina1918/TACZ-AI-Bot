@@ -133,5 +133,8 @@
     "taczbotai.gui.end_y":  "Y",
     "taczbotai.gui.end_z":  "Z",
     "taczbotai.gui.match_leave_team":  "Leave team on end: %s",
-    "taczbotai.gui.match_clear_inv":  "Clear inventory on end: %s"
+    "taczbotai.gui.match_clear_inv":  "Clear inventory on end: %s",
+    "entity.taczbotai.test_subject":  "Test Subject",
+    "item.taczbotai.test_subject_spawn_egg":  "Test Subject Spawn Egg",
+    "taczbotai.command.testsub":  "Spawned %s test subject(s)."
 }

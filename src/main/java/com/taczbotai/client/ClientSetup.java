@@ -32,6 +32,7 @@ public final class ClientSetup {
         @SubscribeEvent
         public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
             event.registerEntityRenderer(ModEntities.TACZ_BOT.get(), TaczBotRenderer::new);
+            event.registerEntityRenderer(ModEntities.TEST_SUBJECT.get(), TestSubjectRenderer::new);
         }
     }
 }
