@@ -1,6 +1,7 @@
 # taczbotai · TACZ Bot AI
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.4.1-blueviolet.svg)](#版本历史)
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-blue.svg)](#兼容性)
 [![Forge](https://img.shields.io/badge/Forge-47.x-orange.svg)](#兼容性)
 [![TACZ](https://img.shields.io/badge/TACZ-1.2.0-red.svg)](#兼容性)
@@ -17,6 +18,7 @@
 - [快速上手](#快速上手)
 - [指令](#指令)
 - [配置文件](#配置文件)
+- [配置界面](#配置界面)
 - [玩法说明](#玩法说明)
 - [性能](#性能)
 - [兼容性](#兼容性)
@@ -71,7 +73,7 @@
 
 1. 安装 Minecraft 1.20.1 + Forge 47.x
 2. 安装 [Timeless and Classics Zero](https://www.curseforge.com/minecraft/mc-mods/timeless-and-classics-zero) 1.2.0
-3. 把 `dist/taczbotai-2.0.0.jar` 放进 `.minecraft/mods/`
+3. 把 `dist/taczbotai-2.4.1.jar` 放进 `.minecraft/mods/`
 
 ---
 
@@ -246,6 +248,8 @@ saves/<世界名>/serverconfig/taczbotai-server.toml
     name = "测试人员"          # 靶子头顶名字
     health = 20.0            # 最大生命值
     invulnerable = false     # 是否无敌
+    aiEnabled = false        # 开启后恢复重力并慢速走动（默认完全静止）
+    aiSpeed = 0.1            # AI 移速，0.1 ≈ 玩家非疾跑速度
 [match]
     endTeleport = true        # 对局结束传送玩家
     endX = 0.0
@@ -257,6 +261,31 @@ saves/<世界名>/serverconfig/taczbotai-server.toml
 
 ---
 
+## 配置界面
+
+入口：模组列表 → TACZ Bot AI → 配置（或 `/taczbotai config set` 指令）。
+
+界面为 **2.5 : 7.5 两栏布局**：
+
+- **左栏（25%）**：分类列表，上下排列、点击切换，当前分类以 `» 名称` 金色高亮
+- **右栏（75%）**：所选分类的内容，超出高度时**滚轮滚动**（只在右栏生效），右侧有滚动条
+- 底部「保存并关闭」固定不动
+
+| 分类 | 可配置内容 |
+|---|---|
+| **战斗** | 攻击档位 Ⅰ~Ⅴ、同队误伤、锁头秒杀、击杀播报、攻击敌对生物 |
+| **数值** | 近 / 中 / 远三档交战距离，七类换弹时长（手枪 / 步枪 / 射手 / 狙击 / 机枪 / 霰弹与重武器 / 其它） |
+| **装备** | 枪械 ID、预装配件、手持枪 NBT（读取 / 清空 / 复制）、按配置重新装备 |
+| **队伍** | 默认队伍（设置 / 清空）、名字池、名字模式（总是 / 仅同队 / 隐藏）、显示 / 隐藏名字 |
+| **路径** | 路径名（分配 / 列表）、路径模式（循环 / 往返 / 单次）、清除路径 |
+| **结算** | 结束传送开关、传送坐标 X/Y/Z、结束时退队、结束时清空背包 |
+| **测试人员** | 名字、血量、AI 开关、AI 移速、无敌、生成测试人员 / 机器人 |
+| **操作** | 重新装备、生成机器人、生成测试人员、查看状态 |
+
+> 所有保存操作都会转化为 `/taczbotai config set <key> <value>` 发给服务端，
+> 因此只有**房主 / 服务器管理员**能真正修改（普通成员会被权限拒绝）。
+
+---
 ## 玩法说明
 
 ### 攻击档位
@@ -341,7 +370,7 @@ cp /path/to/tacz-forge-1.20.1-1.2.0.jar libs/tacz-1.2.0.jar
 ./gradlew build          # Windows: gradlew.bat build
 
 # 3. 产物
-build/libs/taczbotai-2.0.0.jar
+build/libs/taczbotai-2.4.1.jar
 ```
 
 ---
